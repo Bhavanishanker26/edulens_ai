@@ -1,0 +1,18 @@
+﻿# Dependencies
+node_modules/
+venv/
+__pycache__/
+
+# Environment files
+.env
+
+# Large model files
+ml-service/models/best_model.pth
+ml-service/models/dataset/
+
+# Build files
+build/
+dist/
+
+# Logs
+*.log
