@@ -18,10 +18,9 @@ An AI-powered visual learning assistant that analyzes study materials and genera
 
 ## Setup
 1. Clone the repo
-2. Add your \.env\ files
-3. Run \
-pm install\ in backend and frontend
-4. Run \pip install -r requirements.txt\ in ml-service
+2. Add your .env files
+3. Run npm install in backend and frontend
+4. Run pip install -r requirements.txt in ml-service
 5. Start all three services
 
 ## License
