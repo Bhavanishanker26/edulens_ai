@@ -193,6 +193,7 @@ app.post('/api/quiz/submit', async (req, res) => {
   }
 });
 
+
 // Get user history
 app.get('/api/history/:userId', async (req, res) => {
   try {
