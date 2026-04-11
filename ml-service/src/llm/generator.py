@@ -51,8 +51,8 @@ class ContentGenerator:
         """
         Generate quiz questions based on the content
         """
-        system_prompt = f"""Based on the following explanation about {image_class.replace('_', ' ')}, 
-        generate {num_questions} quiz questions to test understanding.
+        system_prompt = f"""Based STRICTLY on the provided document content and the explanation below, 
+        generate {num_questions} quiz questions to test understanding. Do NOT use outside knowledge that is not mentioned in the source text.
         
         Format each question as:
         Q[number]: [Question text]
@@ -61,9 +61,10 @@ class ContentGenerator:
         C) [Option]
         D) [Option]
         Correct: [Letter]
-        Explanation: [Why this is correct]
+        Explanation: [Why this is correct based on the text]
         
-        Mix question types: conceptual, application, and analysis."""
+        Mix question types: conceptual, application, and analysis. Focus solely on the information provided."""
+
 
         user_content = f"Content: {explanation}\n\nExtracted text: {extracted_text}"
 

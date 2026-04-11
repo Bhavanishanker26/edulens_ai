@@ -1,8 +1,8 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 import uvicorn
 import os
 import io
@@ -213,6 +213,80 @@ async def get_classes():
     if classifier:
         return {"classes": classifier.classes}
     return {"classes": []}
+
+
+# ─── WebSocket Endpoint for Voice Study Mode ─────────────────────────────────
+
+# Store client states
+client_states: Dict[str, dict] = {}
+
+@app.websocket("/ws/chat/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await websocket.accept()
+    if client_id not in client_states:
+        client_states[client_id] = {"context": "", "history": []}
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            msg_type = message.get("type")
+            
+            if msg_type == "set_context":
+                client_states[client_id]["context"] = message.get("content", "")
+            elif msg_type == "clear_history":
+                client_states[client_id]["history"] = []
+            elif msg_type == "text_message":
+                user_text = message.get("content", "")
+                client_states[client_id]["history"].append({"role": "user", "content": user_text})
+                
+                # Build prompt
+                system_prompt = "You are EduLens AI, an expert educational tutor. "
+                if client_states[client_id]["context"]:
+                    system_prompt += f"\n\nContext Document Content: {client_states[client_id]['context']}\n"
+                    system_prompt += "\nAnswer the user's questions based primarily on the context document provided above. If the document does not contain the answer, use your general knowledge but mention that it's not from the document."
+                else:
+                    system_prompt += "Help the user study, explain concepts, and answer questions."
+                
+                # Build messages payload for Groq
+                messages = [{"role": "system", "content": system_prompt}]
+                messages.extend(client_states[client_id]["history"][-10:]) # Keep last 10 messages for context
+                
+                # Generate streaming response
+                assistant_response = ""
+                try:
+                    stream = llm_generator.client.chat.completions.create(
+                        messages=messages,
+                        model=llm_generator.model,
+                        temperature=0.7,
+                        max_tokens=1024,
+                        stream=True
+                    )
+                    for chunk in stream:
+                        content = chunk.choices[0].delta.content
+                        if content:
+                            assistant_response += content
+                            await websocket.send_text(json.dumps({"content": content}))
+                except Exception as e:
+                    await websocket.send_text(json.dumps({"content": f"\n[Error: {str(e)}]\n"}))
+                
+                # Send END token
+                await websocket.send_text(json.dumps({"content": "__END__"}))
+                
+                # Save assistant response to history
+                if assistant_response:
+                    client_states[client_id]["history"].append({"role": "assistant", "content": assistant_response})
+                    
+    except WebSocketDisconnect:
+        print(f"Client {client_id} disconnected")
+        # Optional: cleanup state after disconnect if desired
+        pass
+    except Exception as e:
+        print(f"WebSocket Error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass
 
 
 if __name__ == "__main__":

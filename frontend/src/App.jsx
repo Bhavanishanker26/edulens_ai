@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Home } from './pages/Home';
-import { Login } from './pages/Login';
+import Login from './pages/Login';
+import Home from './pages/Home';
 
 function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check for existing session on load
   useEffect(() => {
     const savedToken = localStorage.getItem('edulens_token');
     const savedUser = localStorage.getItem('edulens_user');
     if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      try {
+        setToken(savedToken);
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error('Failed to parse saved user:', e);
+        localStorage.removeItem('edulens_token');
+        localStorage.removeItem('edulens_user');
+      }
     }
     setLoading(false);
   }, []);
@@ -22,6 +27,8 @@ function App() {
   const handleAuthSuccess = (userData, userToken) => {
     setUser(userData);
     setToken(userToken);
+    localStorage.setItem('edulens_token', userToken);
+    localStorage.setItem('edulens_user', JSON.stringify(userData));
   };
 
   const handleLogout = () => {
@@ -34,7 +41,7 @@ function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-blue-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        <div className="w-12 h-12 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -45,17 +52,17 @@ function App() {
         <Route
           path="/login"
           element={
-            user
-              ? <Navigate to="/" replace />
-              : <Login onAuthSuccess={handleAuthSuccess} />
+            user ? <Navigate to="/" replace /> : <Login onAuthSuccess={handleAuthSuccess} />
           }
         />
         <Route
           path="/"
           element={
-            user
-              ? <Home user={user} token={token} onLogout={handleLogout} />
-              : <Navigate to="/login" replace />
+            user ? (
+              <Home user={user} token={token} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
       </Routes>
