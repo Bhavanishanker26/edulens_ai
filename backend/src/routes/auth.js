@@ -2,10 +2,25 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import dns from 'dns/promises';
 
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
+
+// Helper to validate email format and domain MX records
+async function isValidEmailAddress(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return false;
+
+  try {
+    const domain = email.split('@')[1];
+    const records = await dns.resolveMx(domain);
+    return records && records.length > 0;
+  } catch (error) {
+    return false;
+  }
+}
 
 // ─── Register ────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
@@ -18,6 +33,12 @@ router.post('/register', async (req, res) => {
 
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Validate email format mapping and active domain
+    const isValidEmail = await isValidEmailAddress(email);
+    if (!isValidEmail) {
+      return res.status(400).json({ error: 'Please enter a valid, existing email address domain' });
     }
 
     // Check if user exists

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Login = ({ onAuthSuccess }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -12,18 +14,45 @@ const Login = ({ onAuthSuccess }) => {
     setIsLoading(true);
     setError('');
 
+    if (!isLogin && !name) {
+      setError('Please enter your name');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!email || !password) {
+      setError('Please enter email and password');
+      setIsLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const endpoint = isLogin ? 'login' : 'register';
+      const body = isLogin ? { email, password } : { name, email, password };
       
-      if (email && password) {
-        const mockUser = { id: '1', email, name: email.split('@')[0] };
-        const mockToken = 'demo_token_' + Date.now();
-        onAuthSuccess(mockUser, mockToken);
-      } else {
-        setError('Please enter email and password');
+      const response = await fetch(`http://localhost:5000/api/auth/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed');
       }
+
+      onAuthSuccess(data.user, data.token);
     } catch (err) {
-      setError('Login failed. Please try again.');
+      setError(err.message || 'Authentication failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -53,6 +82,29 @@ const Login = ({ onAuthSuccess }) => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            <AnimatePresence mode="popLayout">
+              {!isLogin && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: 'auto', marginTop: 24 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  className="overflow-hidden"
+                >
+                  <label className="block text-sm font-medium text-white/70 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:border-cyan-500 focus:outline-none transition-colors"
+                    placeholder="John Doe"
+                    required={!isLogin}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
                 Email Address
@@ -78,6 +130,7 @@ const Login = ({ onAuthSuccess }) => {
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:border-cyan-500 focus:outline-none transition-colors"
                 placeholder="••••••••"
                 required
+                minLength={6}
               />
             </div>
 
@@ -91,29 +144,31 @@ const Login = ({ onAuthSuccess }) => {
               {isLoading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in...
+                  {isLogin ? 'Signing in...' : 'Creating account...'}
                 </>
               ) : (
-                'Sign In'
+                isLogin ? 'Sign In' : 'Sign Up'
               )}
             </motion.button>
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-white/40 text-sm">
-              Demo: Use any email/password
-            </p>
+            <button
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setError('');
+              }}
+              className="text-white/40 hover:text-cyan-400 text-sm transition-colors"
+            >
+              {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+            </button>
           </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+        <div className="mt-8 grid grid-cols-2 gap-4 text-center">
           <div className="p-4 bg-white/5 rounded-xl">
             <span className="text-2xl mb-2 block">🤖</span>
             <span className="text-white/60 text-xs">AI Tutor</span>
-          </div>
-          <div className="p-4 bg-white/5 rounded-xl">
-            <span className="text-2xl mb-2 block">🗺️</span>
-            <span className="text-white/60 text-xs">Mind Maps</span>
           </div>
           <div className="p-4 bg-white/5 rounded-xl">
             <span className="text-2xl mb-2 block">📝</span>

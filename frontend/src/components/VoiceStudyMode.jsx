@@ -4,18 +4,11 @@ import { motion } from 'framer-motion';
 const VoiceStudyMode = ({ documentContent, documentId }) => {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
-  const [isListening, setIsListening] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   
   const ws = useRef(null);
-  const recognition = useRef(null);
   const messagesEndRef = useRef(null);
-  const inputTextRef = useRef(inputText);
-
-  useEffect(() => {
-    inputTextRef.current = inputText;
-  }, [inputText]);
 
   useEffect(() => {
     const clientId = documentId || `user_${Math.random().toString(36).substr(2, 9)}`;
@@ -26,9 +19,13 @@ const VoiceStudyMode = ({ documentContent, documentId }) => {
     ws.current.onopen = () => {
       setIsConnected(true);
       if (documentContent && documentContent.length > 50) {
+        let contentToSend = documentContent;
+        if (contentToSend.length > 8000) {
+          contentToSend = contentToSend.substring(0, 8000) + "\n\n[...Context Truncated for Voice Mode]";
+        }
         ws.current.send(JSON.stringify({
           type: 'set_context',
-          content: documentContent
+          content: contentToSend
         }));
       }
     };
@@ -55,34 +52,8 @@ const VoiceStudyMode = ({ documentContent, documentId }) => {
 
     ws.current.onclose = () => setIsConnected(false);
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognition.current = new SpeechRecognition();
-      recognition.current.continuous = true;
-      recognition.current.interimResults = true;
-      recognition.current.lang = 'en-US';
-      
-      recognition.current.onresult = (event) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        setInputText(transcript);
-      };
-      
-      recognition.current.onend = () => {
-        setIsListening(false);
-        const finalText = inputTextRef.current.trim();
-        if (finalText.length > 2) {
-          sendMessage(finalText);
-          setInputText('');
-        }
-      };
-    }
-
     return () => {
       ws.current?.close();
-      if (recognition.current) recognition.current.stop();
     };
   }, [documentContent, documentId]);
 
@@ -90,31 +61,12 @@ const VoiceStudyMode = ({ documentContent, documentId }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const toggleListening = () => {
-    if (!recognition.current) {
-      alert('Speech recognition not supported. Use Chrome or Edge.');
-      return;
-    }
-    
-    if (isListening) {
-      recognition.current.stop();
-      setIsListening(false);
-    } else {
-      setInputText('');
-      setIsListening(true);
-      try {
-        recognition.current.start();
-      } catch (err) {
-        setIsListening(false);
-      }
-    }
-  };
-
   const sendMessage = (text) => {
     if (!text?.trim() || !ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     
     setMessages(prev => [...prev, { role: 'user', content: text.trim(), isComplete: true, timestamp: new Date().toLocaleTimeString() }]);
     setIsSpeaking(true);
+    setInputText('');
     ws.current.send(JSON.stringify({ type: 'text_message', content: text.trim() }));
   };
 
@@ -152,7 +104,7 @@ const VoiceStudyMode = ({ documentContent, documentId }) => {
           <div className="text-center text-white/40 mt-20">
             <div className="text-6xl mb-4">💬</div>
             <p className="text-lg mb-2">Your AI Study Companion</p>
-            <p className="text-sm max-w-xs mx-auto">Ask questions about your document, or tap the microphone to talk</p>
+            <p className="text-sm max-w-xs mx-auto">Ask questions about your uploaded document to learn more</p>
             <div className="flex gap-2 justify-center mt-4">
               {['Explain this', 'Quiz me', 'Summarize'].map(suggestion => (
                 <button key={suggestion} onClick={() => sendMessage(suggestion)} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/70 text-xs transition-colors">
@@ -180,25 +132,22 @@ const VoiceStudyMode = ({ documentContent, documentId }) => {
 
       <div className="p-4 bg-white/5 backdrop-blur-md border-t border-white/10">
         <div className="flex items-center gap-3">
-          <button onClick={toggleListening} disabled={!recognition.current} className={`p-3.5 rounded-full transition-all shadow-lg ${isListening ? 'bg-red-500 shadow-red-500/40 animate-pulse' : 'bg-gradient-to-r from-cyan-500 to-blue-500 shadow-cyan-500/30'} ${!recognition.current ? 'opacity-50 cursor-not-allowed' : ''}`}>
-            <span className="text-xl">{isListening ? '🔴' : '🎤'}</span>
-          </button>
-          
-          <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendMessage(inputText)} placeholder={isListening ? "Listening..." : "Ask anything..."} disabled={isListening} className="flex-1 px-4 py-3 rounded-full bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-cyan-400/50 disabled:opacity-50" />
-          
-          <button onClick={() => sendMessage(inputText)} disabled={!inputText.trim() || !isConnected} className="p-3.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 disabled:opacity-40 text-white shadow-lg">
+          <input 
+            type="text" 
+            value={inputText} 
+            onChange={(e) => setInputText(e.target.value)} 
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage(inputText)} 
+            placeholder="Ask anything..." 
+            className="flex-1 px-4 py-3 rounded-full bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-cyan-400/50" 
+          />
+          <button 
+            onClick={() => sendMessage(inputText)} 
+            disabled={!inputText.trim() || !isConnected} 
+            className="p-3.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 disabled:opacity-40 text-white shadow-lg"
+          >
             <span className="text-xl">📤</span>
           </button>
         </div>
-        
-        {isListening && (
-          <div className="flex justify-center gap-1 mt-3 h-8 items-center">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="w-1.5 bg-gradient-to-t from-cyan-400 to-blue-500 rounded-full animate-pulse" style={{ height: '20px', animationDelay: `${i * 0.1}s` }} />
-            ))}
-            <span className="ml-3 text-xs text-cyan-400 font-medium">Listening...</span>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import os
 import io
 import json
 import numpy as np
+import traceback
 
 # PDF support
 import fitz  # PyMuPDF
@@ -137,6 +138,12 @@ async def process_file(
             ocr_result['word_count'] = len(merged.split())
             ocr_result['source'] = 'pdf'
 
+        # Safely truncate the text to ~8000 characters (approx 2000 tokens)
+        # to avoid crashing Groq's 12k Tokens-Per-Minute limit on the free tier.
+        safe_text = ocr_result.get('raw_text', '')
+        if len(safe_text) > 8000:
+            safe_text = safe_text[:8000] + "\n\n[...Content Truncated to fit AI token limits...]"
+
         # Step 3: Stream response
         async def generate_response():
             # ✅ Use safe_json_dumps everywhere to handle numpy types
@@ -148,7 +155,7 @@ async def process_file(
 
             for chunk in llm_generator.generate_explanation(
                 classification['class'],
-                ocr_result['raw_text'],
+                safe_text,
                 difficulty
             ):
                 explanation_chunks.append(chunk)
@@ -163,7 +170,7 @@ async def process_file(
 
                 for chunk in llm_generator.generate_quiz(
                     classification['class'],
-                    ocr_result['raw_text'],
+                    safe_text,
                     full_explanation
                 ):
                     quiz_chunks.append(chunk)
@@ -186,7 +193,9 @@ async def process_file(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, str(e))
+        print("Error during /process endpoint:")
+        traceback.print_exc()
+        raise HTTPException(500, "An internal server error occurred while processing the file.")
 
 
 @app.post("/study-plan")
@@ -197,7 +206,9 @@ async def generate_study_plan(request: dict):
         plan = llm_generator.generate_study_plan(image_class, weak_areas)
         return {"plan": plan}
     except Exception as e:
-        raise HTTPException(500, str(e))
+        print("Error during /study-plan endpoint:")
+        traceback.print_exc()
+        raise HTTPException(500, "An internal server error occurred while generating study plan.")
 
 
 @app.get("/health")
@@ -233,7 +244,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             msg_type = message.get("type")
             
             if msg_type == "set_context":
-                client_states[client_id]["context"] = message.get("content", "")
+                context_str = message.get("content", "")
+                if len(context_str) > 8000:
+                    context_str = context_str[:8000] + "\n\n[...Context Truncated]"
+                client_states[client_id]["context"] = context_str
             elif msg_type == "clear_history":
                 client_states[client_id]["history"] = []
             elif msg_type == "text_message":
@@ -277,9 +291,15 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 if assistant_response:
                     client_states[client_id]["history"].append({"role": "assistant", "content": assistant_response})
                     
+                # Constrain history size to prevent indefinite memory growth
+                if len(client_states[client_id]["history"]) > 20:
+                    client_states[client_id]["history"] = client_states[client_id]["history"][-20:]
+                    
     except WebSocketDisconnect:
         print(f"Client {client_id} disconnected")
-        # Optional: cleanup state after disconnect if desired
+        # Cleanup state after disconnect
+        if client_id in client_states:
+            del client_states[client_id]
         pass
     except Exception as e:
         print(f"WebSocket Error: {e}")

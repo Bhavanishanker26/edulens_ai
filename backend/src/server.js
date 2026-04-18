@@ -31,6 +31,10 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/edulens')
 // ✅ Auth routes
 app.use('/api/auth', authRoutes);
 
+// ✅ Quiz routes
+import quizRoutes from './routes/quiz.js';
+app.use('/api/quiz', quizRoutes);
+
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
